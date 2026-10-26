@@ -1,52 +1,77 @@
 package middleware
 
 import (
-	"log"
+	"context"
+	"log/slog"
 	"net/http"
 	"time"
 )
 
-type ResponseWriterWrapper struct {
+const loggerKey contextKey = "slogLogger"
+
+func LoggerFrom(ctx context.Context) *slog.Logger {
+	var logger *slog.Logger
+	if val, ok := ctx.Value(loggerKey).(*slog.Logger); ok {
+		logger = val
+	} else {
+		logger = slog.Default()
+	}
+	return logger
+}
+
+type responseWriterWrapper struct {
 	http.ResponseWriter
 	statusCode int
 	bodySize   int
 }
 
-func (rw *ResponseWriterWrapper) WriteHeader(code int) {
+func (rw *responseWriterWrapper) Unwrap() http.ResponseWriter {
+	return rw.ResponseWriter
+}
+
+func (rw *responseWriterWrapper) WriteHeader(code int) {
 	rw.statusCode = code
 	rw.ResponseWriter.WriteHeader(code)
 }
 
-func (rw *ResponseWriterWrapper) Write(b []byte) (int, error) {
+func (rw *responseWriterWrapper) Write(b []byte) (int, error) {
 	size, err := rw.ResponseWriter.Write(b)
 	rw.bodySize += size
 	return size, err
 }
 
-func LoggingMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-		wrapper := &ResponseWriterWrapper{
-			ResponseWriter: w,
-			statusCode:     http.StatusOK,
-		}
-		next.ServeHTTP(wrapper, r)
+func ContextLogger(baseLogger *slog.Logger) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
-		duration := time.Since(start)
+			wrapper := &responseWriterWrapper{
+				ResponseWriter: w,
+				statusCode:     http.StatusOK,
+			}
 
-		reqID := ""
-		if id, ok := r.Context().Value(requestIDKey).(string); ok {
-			reqID = id
-		}
+			reqID := ""
+			if id, ok := r.Context().Value(requestIDKey).(string); ok {
+				reqID = id
+			}
 
-		log.Printf("[%s%s] %s %s %d %dB in %v",
-			reqID,
-			r.RemoteAddr,
-			r.Method,
-			r.URL.Path,
-			wrapper.statusCode,
-			wrapper.bodySize,
-			duration,
-		)
-	})
+			scopedLogger := baseLogger.With(
+				slog.String("request_id", reqID),
+				slog.String("method", r.Method),
+				slog.String("path", r.URL.Path),
+			)
+
+			ctx := context.WithValue(r.Context(), loggerKey, scopedLogger)
+
+			r = r.WithContext(ctx)
+
+			start := time.Now()
+			next.ServeHTTP(wrapper, r)
+
+			duration := time.Since(start)
+			scopedLogger.Info("request completed",
+				slog.Int("status", wrapper.statusCode),
+				slog.Int("bytes", wrapper.bodySize), slog.Float64("duration_ms", float64(duration.Microseconds())))
+
+		})
+	}
 }

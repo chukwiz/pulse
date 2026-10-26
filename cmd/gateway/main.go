@@ -14,6 +14,7 @@ import (
 	"github.com/chukwiz/pulse/internal/config"
 	"github.com/chukwiz/pulse/internal/gateway"
 	"github.com/chukwiz/pulse/internal/memstore"
+	"github.com/chukwiz/pulse/internal/middleware"
 )
 
 func main() {
@@ -36,15 +37,19 @@ func run(logger *slog.Logger) error {
 	defer stop()
 
 	eventStore := memstore.New()
-
 	eventHandler := gateway.New(eventStore, logger)
 
 	mux := http.NewServeMux()
 	eventHandler.RegisterRoutes(mux)
 
+	var handler http.Handler = mux
+	handler = middleware.Recover(handler)
+	handler = middleware.ContextLogger(logger)(handler)
+	handler = middleware.RequestID(handler)
+
 	httpServer := &http.Server{
 		Addr:              cfg.Server.Addr,
-		Handler:           mux,
+		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      10 * time.Second,
