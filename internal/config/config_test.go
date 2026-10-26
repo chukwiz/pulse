@@ -10,8 +10,8 @@ import (
 func TestValidateListenAddr(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name    string
-		addr    string
+		name     string
+		addr     string
 		wantsErr bool
 	}{
 		{name: "port only", addr: ":8080"},
@@ -86,10 +86,10 @@ func TestLoad(t *testing.T) {
 
 func TestLoadDotEnv(t *testing.T) {
 	cases := []struct {
-		name    string
-		dotenv  string // file contents; "" means no .env file
-		env     string // "" means HTTP_ADDR is unset
-		want    string
+		name     string
+		dotenv   string // file contents; "" means no .env file
+		env      string // "" means HTTP_ADDR is unset
+		want     string
 		wantsErr bool
 	}{
 		{name: "no file is fine", want: ":8080"},

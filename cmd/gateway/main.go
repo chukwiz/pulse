@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/chukwiz/pulse/internal/config"
+	"github.com/chukwiz/pulse/internal/gateway"
+	"github.com/chukwiz/pulse/internal/memstore"
 )
 
 func main() {
@@ -33,12 +35,12 @@ func run(logger *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	eventStore := memstore.New()
+
+	eventHandler := gateway.New(eventStore, logger)
+
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status": "ok"}`))
-	})
+	eventHandler.RegisterRoutes(mux)
 
 	httpServer := &http.Server{
 		Addr:              cfg.Server.Addr,
