@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/chukwiz/pulse/internal/domain"
+	"github.com/chukwiz/pulse/internal/middleware"
 )
 
 const (
@@ -18,6 +19,8 @@ const (
 	defaultListLimit = 50
 	maxListLimit     = 100
 )
+
+var reqBodyTooLarge = fmt.Sprintf("request body too large: data must be at most %d KB", domain.MaxDataBytes/1024)
 
 type EventStore interface {
 	Save(ctx context.Context, e domain.Event) (domain.Event, bool, error)
@@ -65,7 +68,7 @@ func (h *Handler) createEvent(w http.ResponseWriter, r *http.Request) {
 	var req createEventRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
-			writeError(w, http.StatusRequestEntityTooLarge, fmt.Sprintf("request body too large: data must be at most %d KB", domain.MaxDataBytes/1024), codePayloadTooLarge)
+			writeError(w, http.StatusRequestEntityTooLarge, reqBodyTooLarge, codePayloadTooLarge)
 			return
 		}
 
@@ -80,7 +83,7 @@ func (h *Handler) createEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	apiKeyID := "" // TODO: set by the auth middleware
+	apiKeyID := middleware.APIKeyIDFrom(r.Context())
 
 	event, err := domain.NewEvent(req.Type, idempotencyKey, apiKeyID, req.Data)
 	if err != nil {

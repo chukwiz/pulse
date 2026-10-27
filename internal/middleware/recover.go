@@ -7,7 +7,7 @@ import (
 	"runtime/debug"
 )
 
-const internalErrorBody = `{"error": {"code":"internal_error","message":"something went wrong"}}` + "\n"
+const internalErrorMsg = "something went wrong"
 
 func Recover(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -31,9 +31,7 @@ func Recover(next http.Handler) http.Handler {
 				return
 			}
 
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			_, _ = w.Write([]byte(internalErrorBody))
+			writeError(w, http.StatusInternalServerError, internalErrorMsg, codeInternalError)
 		}()
 
 		next.ServeHTTP(rw, r)

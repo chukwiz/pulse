@@ -37,12 +37,17 @@ func run(logger *slog.Logger) error {
 	defer stop()
 
 	eventStore := memstore.New()
-	eventHandler := gateway.New(eventStore, logger)
+	gw := gateway.New(eventStore, logger)
 
-	mux := http.NewServeMux()
-	eventHandler.RegisterRoutes(mux)
+	// /v1 routes live on their own mux so only they require an API key
+	v1 := http.NewServeMux()
+	gw.RegisterRoutes(v1)
 
-	var handler http.Handler = mux
+	root := http.NewServeMux()
+	gw.RegisterHealth(root)
+	root.Handle("/v1/", middleware.Auth(cfg.APIKeys)(v1))
+
+	var handler http.Handler = root
 	handler = middleware.Recover(handler)
 	handler = middleware.ContextLogger(logger)(handler)
 	handler = middleware.RequestID(handler)
