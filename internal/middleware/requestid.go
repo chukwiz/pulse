@@ -10,21 +10,16 @@ import (
 
 type contextKey string
 
-const requestIDKey contextKey = "requestID"
-const requestIDPrefix string = "req"
+const (
+	requestIDKey    contextKey = "requestID"
+	requestIDPrefix string     = "req"
+)
 
 var strictRequestIDRegex = regexp.MustCompile(`^[a-zA-Z0-9-_]{8,64}$`)
 
-func RequestIDFrom(ctx context.Context) contextKey {
-	var reqId contextKey
-
-	if val, ok := ctx.Value(requestIDKey).(string); ok {
-		reqId = contextKey(val)
-	} else {
-		reqId = ""
-	}
-
-	return reqId
+func RequestIDFrom(ctx context.Context) string {
+	reqID, _ := ctx.Value(requestIDKey).(string)
+	return reqID
 }
 
 func generateRequestID() string {
