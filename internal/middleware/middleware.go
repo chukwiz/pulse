@@ -1,10 +1,15 @@
-// Package middleware provides the gateway's HTTP middleware: request IDs, logging, panic recovery and API-key auth.
+// Package middleware provides the gateway's HTTP middleware: request IDs, logging, panic recovery, rate limiting and API-key auth.
 package middleware
 
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 )
+
+type rateLimiter interface {
+	Allow(key string) (bool, time.Duration)
+}
 
 type errorBody struct {
 	Code    string `json:"code"`
@@ -20,6 +25,7 @@ type errorCode string
 const (
 	codeUnauthorized  errorCode = "unauthorized"
 	codeInternalError errorCode = "internal_error"
+	codeRateLimited   errorCode = "rate_limited"
 )
 
 func writeJSON(w http.ResponseWriter, status int, data any) {

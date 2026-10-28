@@ -7,6 +7,18 @@ import (
 	"testing"
 )
 
+// testAPIKey is a syntactically valid key for tests; it is not a real secret.
+var testAPIKey = strings.Repeat("k", minAPIKeyLen)
+
+// setRequiredEnv sets every variable Load requires, and clears optional ones
+// so values exported in the developer's shell can't change the result.
+func setRequiredEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("API_KEYS", "test:"+testAPIKey)
+	t.Setenv("RATE_LIMIT_RPS", "")
+	t.Setenv("RATE_LIMIT_BURST", "")
+}
+
 func TestValidateListenAddr(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -59,6 +71,7 @@ func TestLoad(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Chdir(t.TempDir())
+			setRequiredEnv(t)
 			t.Setenv("HTTP_ADDR", tc.env)
 
 			cfg, err := Load()
@@ -107,6 +120,7 @@ func TestLoadDotEnv(t *testing.T) {
 				}
 			}
 			t.Chdir(dir)
+			setRequiredEnv(t)
 
 			// t.Setenv registers a cleanup that restores the original value.
 			// godotenv never overrides a variable that is set (even to ""),

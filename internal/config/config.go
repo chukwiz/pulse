@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"math"
 	"net"
 	"os"
 	"strconv"
@@ -15,8 +16,9 @@ import (
 const minAPIKeyLen = 32
 
 type Config struct {
-	Server  ServerConfig
-	APIKeys []APIKey
+	Server    ServerConfig
+	APIKeys   []APIKey
+	RateLimit RateLimitConfig
 }
 
 type APIKey struct {
@@ -25,8 +27,13 @@ type APIKey struct {
 }
 
 type ServerConfig struct {
-	// Addr is the listen address passed to http.Server
+	// Addr is the listen address passed to http.Server.
 	Addr string
+}
+
+type RateLimitConfig struct {
+	RPS   float64
+	Burst int
 }
 
 func Load() (Config, error) {
@@ -35,14 +42,21 @@ func Load() (Config, error) {
 	}
 
 	apiKeys, keysErr := parseAPIKeys(getString("API_KEYS", ""))
+	burst, burstErr := positiveInt("RATE_LIMIT_BURST", "100")
+	rps, rpsErr := positiveFloat("RATE_LIMIT_RPS", "10")
+
 	cfg := Config{
 		Server: ServerConfig{
 			Addr: getString("HTTP_ADDR", ":8080"),
 		},
 		APIKeys: apiKeys,
+		RateLimit: RateLimitConfig{
+			RPS:   rps,
+			Burst: burst,
+		},
 	}
 
-	if err := errors.Join(cfg.validate(), keysErr); err != nil {
+	if err := errors.Join(cfg.validate(), keysErr, burstErr, rpsErr); err != nil {
 		return Config{}, fmt.Errorf("invalid configuration: %w", err)
 	}
 
@@ -68,6 +82,35 @@ func validateListenAddr(addr string) error {
 		return fmt.Errorf("%q has an invalid port %q", addr, port)
 	}
 	return nil
+}
+
+func positiveInt(key, def string) (int, error) {
+	raw := getString(key, def)
+
+	intVal, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, fmt.Errorf("%s: %s is not a whole number", key, raw)
+	}
+	if intVal <= 0 {
+		return intVal, fmt.Errorf("%s: must be greater than 0, got %d", key, intVal)
+	}
+	return intVal, nil
+}
+
+func positiveFloat(key, fallback string) (float64, error) {
+	raw := getString(key, fallback)
+
+	floatVal, err := strconv.ParseFloat(raw, 64)
+	if err != nil {
+		return 0, fmt.Errorf("%s: %s is not a number", key, raw)
+	}
+	if math.IsNaN(floatVal) || math.IsInf(floatVal, 0) {
+		return floatVal, fmt.Errorf("%s: %g must be a finite number", key, floatVal)
+	}
+	if floatVal <= 0 {
+		return floatVal, fmt.Errorf("%s: must be greater than 0, got %g", key, floatVal)
+	}
+	return floatVal, nil
 }
 
 func parseAPIKeys(raw string) ([]APIKey, error) {

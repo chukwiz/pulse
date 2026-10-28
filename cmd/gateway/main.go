@@ -15,6 +15,7 @@ import (
 	"github.com/chukwiz/pulse/internal/gateway"
 	"github.com/chukwiz/pulse/internal/memstore"
 	"github.com/chukwiz/pulse/internal/middleware"
+	"github.com/chukwiz/pulse/internal/ratelimit"
 )
 
 func main() {
@@ -38,14 +39,19 @@ func run(logger *slog.Logger) error {
 
 	eventStore := memstore.New()
 	gw := gateway.New(eventStore, logger)
+	rateLimiter := ratelimit.New(cfg.RateLimit.RPS, cfg.RateLimit.Burst)
 
-	// /v1 routes live on their own mux so only they require an API key
+	// /v1 routes live on their own mux so only they require an API key.
 	v1 := http.NewServeMux()
 	gw.RegisterRoutes(v1)
 
 	root := http.NewServeMux()
 	gw.RegisterHealth(root)
-	root.Handle("/v1/", middleware.Auth(cfg.APIKeys)(v1))
+
+	var api http.Handler = v1
+	api = middleware.RateLimit(rateLimiter)(api)
+	api = middleware.Auth(cfg.APIKeys)(api)
+	root.Handle("/v1/", api)
 
 	var handler http.Handler = root
 	handler = middleware.Recover(handler)
